@@ -239,6 +239,31 @@ processing_options.add_argument(
 
     """,
 )
+processing_options.add_argument(
+    '--sequence',
+    action='store_true',
+    default=False,
+    short_help='Execute multiple requests from STDIN sequentially.',
+    help="""
+    Read and execute multiple HTTPie request definitions from STDIN,
+    one request per line, sequentially.
+
+    Each line should contain a complete HTTPie command without the
+    leading "http" program name, e.g.:
+
+        GET https://httpbin.org/get
+        POST https://httpbin.org/post name=alice
+        GET https://httpbin.org/headers
+
+    Example usage:
+
+        $ cat requests.http | http --sequence
+        $ echo -e "GET httpbin.org/get\nPOST httpbin.org/post foo=bar" | http --sequence
+
+    Requests are executed strictly in order, one at a time.
+
+    """,
+)
 
 
 #######################################################################

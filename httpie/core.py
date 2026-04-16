@@ -126,9 +126,9 @@ def raw_main(
             original_exc = unwrap_context(exc)
             if isinstance(original_exc, socket.gaierror):
                 if original_exc.errno == socket.EAI_AGAIN:
-                    annotation = '\nCouldn’t connect to a DNS server. Please check your connection and try again.'
+                    annotation = '\nCouldn\'t connect to a DNS server. Please check your connection and try again.'
                 elif original_exc.errno == socket.EAI_NONAME:
-                    annotation = '\nCouldn’t resolve the given hostname. Please check the URL and try again.'
+                    annotation = '\nCouldn\'t resolve the given hostname. Please check the URL and try again.'
                 propagated_exc = original_exc
             else:
                 propagated_exc = exc
@@ -167,10 +167,95 @@ def main(
     )
 
 
+def run_sequence_mode(args: argparse.Namespace, env: Environment) -> ExitStatus:
+    """
+    Execute multiple HTTPie request definitions from STDIN sequentially.
+    
+    Each line in STDIN is treated as a separate HTTPie command without
+    the leading 'http' program name.
+    
+    Example input:
+        GET https://httpbin.org/get
+        POST https://httpbin.org/post name=alice
+        GET https://httpbin.org/headers
+    """
+    import shlex
+    from .cli.definition import parser
+    
+    exit_status = ExitStatus.SUCCESS
+    request_lines = []
+    
+    # Read all request definitions from STDIN
+    try:
+        for line in env.stdin:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                request_lines.append(line)
+    except KeyboardInterrupt:
+        env.stderr.write('\n')
+        return ExitStatus.ERROR_CTRL_C
+    
+    if not request_lines:
+        env.log_error('No request definitions found in STDIN.')
+        return ExitStatus.ERROR
+    
+    # Execute each request sequentially
+    for i, request_line in enumerate(request_lines, 1):
+        if env.stdout_isatty:
+            env.stderr.write(f'\n[{i}/{len(request_lines)}] {request_line}\n')
+        
+        try:
+            # Parse the request line as if it were CLI arguments
+            # Add --ignore-stdin to prevent argparser from using stdin for request body
+            request_args = shlex.split(request_line) + ['--ignore-stdin']
+            
+            # Create a fresh environment for this request to avoid stdin conflicts
+            request_env = Environment(
+                stdin=None,  # No stdin for individual requests in sequence mode
+                stdout=env.stdout,
+                stderr=env.stderr,
+            )
+            request_env.program_name = env.program_name
+            
+            # Parse the request
+            request_namespace = parser.parse_args(
+                args=request_args,
+                env=request_env,
+            )
+            
+            # Execute the request (call _program to avoid sequence check loop)
+            request_exit_status = _program(request_namespace, request_env)
+            
+            # Track the worst exit status
+            if request_exit_status != ExitStatus.SUCCESS:
+                exit_status = request_exit_status
+                
+        except SystemExit as e:
+            # Handle SystemExit from argument parser errors
+            if e.code != ExitStatus.SUCCESS:
+                exit_status = ExitStatus.ERROR if e.code is None or e.code != 0 else ExitStatus(e.code)
+        except Exception as e:
+            env.log_error(f'Error executing request [{i}]: {e}')
+            exit_status = ExitStatus.ERROR
+    
+    return exit_status
+
+
 def program(args: argparse.Namespace, env: Environment) -> ExitStatus:
     """
     The main program without error handling.
 
+    """
+    # Handle --sequence mode: execute multiple requests from STDIN
+    if getattr(args, 'sequence', False):
+        return run_sequence_mode(args, env)
+    
+    return _program(args, env)
+
+
+def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
+    """
+    The actual program implementation without the --sequence check.
     """
     # TODO: Refactor and drastically simplify, especially so that the separator logic is elsewhere.
     exit_status = ExitStatus.SUCCESS
@@ -209,7 +294,7 @@ def program(args: argparse.Namespace, env: Environment) -> ExitStatus:
         force_separator = False
         prev_with_body = False
 
-        # Process messages as they’re generated
+        # Process messages as they're generated
         for message in messages:
             output_options = OutputOptions.from_message(message, args.output_options)
 
