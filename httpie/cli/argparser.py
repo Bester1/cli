@@ -224,6 +224,16 @@ class HTTPieArgumentParser(BaseHTTPieArgumentParser):
             else:
                 self.args.url = scheme + self.args.url
 
+        # Encode unescaped # characters in the query string as %23.
+        # urlparse treats # as a fragment separator, so a # inside query params
+        # (e.g., ?id=#1001) would incorrectly split the URL and lose data.
+        # See <https://github.com/httpie/cli/issues/1546>
+        qmark = self.args.url.find('?')
+        if qmark != -1:
+            before_query = self.args.url[: qmark + 1]
+            after_query = self.args.url[qmark + 1 :]
+            self.args.url = before_query + after_query.replace('#', '%23')
+
     def _setup_standard_streams(self):
         """
         Modify `env.stdout` and `env.stdout_isatty` based on args, if needed.
