@@ -230,8 +230,8 @@ class HTTPieArgumentParser(BaseHTTPieArgumentParser):
         # See <https://github.com/httpie/cli/issues/1546>
         qmark = self.args.url.find('?')
         if qmark != -1:
-            before_query = self.args.url[: qmark + 1]
-            after_query = self.args.url[qmark + 1 :]
+            before_query = self.args.url[:qmark + 1]
+            after_query = self.args.url[qmark + 1:]
             self.args.url = before_query + after_query.replace('#', '%23')
 
     def _setup_standard_streams(self):
