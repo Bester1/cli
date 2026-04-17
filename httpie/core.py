@@ -15,12 +15,14 @@ from .cli.nested_json import NestedJSONSyntaxError
 from .client import collect_messages
 from .context import Environment, LogLevel
 from .downloads import Downloader
-from .models import (
-    RequestsMessageKind,
-    OutputOptions
-)
+from .models import RequestsMessageKind, OutputOptions
 from .output.models import ProcessingOptions
-from .output.writer import write_message, write_stream, write_raw_data, MESSAGE_SEPARATOR_BYTES
+from .output.writer import (
+    write_message,
+    write_stream,
+    write_raw_data,
+    MESSAGE_SEPARATOR_BYTES,
+)
 from .plugins.registry import plugin_manager
 from .status import ExitStatus, http_status_to_exit_status
 from .utils import unwrap_context
@@ -48,27 +50,27 @@ def raw_main(
     if use_default_options and env.config.default_options:
         args = env.config.default_options + args
 
-    include_debug_info = '--debug' in args
-    include_traceback = include_debug_info or '--traceback' in args
+    include_debug_info = "--debug" in args
+    include_traceback = include_debug_info or "--traceback" in args
 
     def handle_generic_error(e, annotation=None):
         msg = str(e)
-        if hasattr(e, 'request'):
+        if hasattr(e, "request"):
             request = e.request
-            if hasattr(request, 'url'):
+            if hasattr(request, "url"):
                 msg = (
-                    f'{msg} while doing a {request.method}'
-                    f' request to URL: {request.url}'
+                    f"{msg} while doing a {request.method}"
+                    f" request to URL: {request.url}"
                 )
         if annotation:
             msg += annotation
-        env.log_error(f'{type(e).__name__}: {msg}')
+        env.log_error(f"{type(e).__name__}: {msg}")
         if include_traceback:
             raise
 
     if include_debug_info:
         print_debug_info(env)
-        if args == ['--debug']:
+        if args == ["--debug"]:
             return ExitStatus.SUCCESS
 
     exit_status = ExitStatus.SUCCESS
@@ -84,13 +86,13 @@ def raw_main(
             raise
         exit_status = ExitStatus.ERROR
     except KeyboardInterrupt:
-        env.stderr.write('\n')
+        env.stderr.write("\n")
         if include_traceback:
             raise
         exit_status = ExitStatus.ERROR_CTRL_C
     except SystemExit as e:
         if e.code != ExitStatus.SUCCESS:
-            env.stderr.write('\n')
+            env.stderr.write("\n")
             if include_traceback:
                 raise
             exit_status = ExitStatus.ERROR
@@ -102,33 +104,32 @@ def raw_main(
                 env=env,
             )
         except KeyboardInterrupt:
-            env.stderr.write('\n')
+            env.stderr.write("\n")
             if include_traceback:
                 raise
             exit_status = ExitStatus.ERROR_CTRL_C
         except SystemExit as e:
             if e.code != ExitStatus.SUCCESS:
-                env.stderr.write('\n')
+                env.stderr.write("\n")
                 if include_traceback:
                     raise
                 exit_status = ExitStatus.ERROR
         except requests.Timeout:
             exit_status = ExitStatus.ERROR_TIMEOUT
-            env.log_error(f'Request timed out ({parsed_args.timeout}s).')
+            env.log_error(f"Request timed out ({parsed_args.timeout}s).")
         except requests.TooManyRedirects:
             exit_status = ExitStatus.ERROR_TOO_MANY_REDIRECTS
             env.log_error(
-                f'Too many redirects'
-                f' (--max-redirects={parsed_args.max_redirects}).'
+                f"Too many redirects" f" (--max-redirects={parsed_args.max_redirects})."
             )
         except requests.exceptions.ConnectionError as exc:
             annotation = None
             original_exc = unwrap_context(exc)
             if isinstance(original_exc, socket.gaierror):
                 if original_exc.errno == socket.EAI_AGAIN:
-                    annotation = '\nCouldn\'t connect to a DNS server. Please check your connection and try again.'
+                    annotation = "\nCouldn't connect to a DNS server. Please check your connection and try again."
                 elif original_exc.errno == socket.EAI_NONAME:
-                    annotation = '\nCouldn\'t resolve the given hostname. Please check the URL and try again.'
+                    annotation = "\nCouldn't resolve the given hostname. Please check the URL and try again."
                 propagated_exc = original_exc
             else:
                 propagated_exc = exc
@@ -144,8 +145,7 @@ def raw_main(
 
 
 def main(
-    args: List[Union[str, bytes]] = sys.argv,
-    env: Environment = Environment()
+    args: List[Union[str, bytes]] = sys.argv, env: Environment = Environment()
 ) -> ExitStatus:
     """
     The main function.
@@ -159,21 +159,16 @@ def main(
 
     from .cli.definition import parser
 
-    return raw_main(
-        parser=parser,
-        main_program=program,
-        args=args,
-        env=env
-    )
+    return raw_main(parser=parser, main_program=program, args=args, env=env)
 
 
 def run_sequence_mode(args: argparse.Namespace, env: Environment) -> ExitStatus:
     """
     Execute multiple HTTPie request definitions from STDIN sequentially.
-    
+
     Each line in STDIN is treated as a separate HTTPie command without
     the leading 'http' program name.
-    
+
     Example input:
         GET https://httpbin.org/get
         POST https://httpbin.org/post name=alice
@@ -181,34 +176,34 @@ def run_sequence_mode(args: argparse.Namespace, env: Environment) -> ExitStatus:
     """
     import shlex
     from .cli.definition import parser
-    
+
     exit_status = ExitStatus.SUCCESS
     request_lines = []
-    
+
     # Read all request definitions from STDIN
     try:
         for line in env.stdin:
             line = line.strip()
-            if line and not line.startswith('#'):
+            if line and not line.startswith("#"):
                 request_lines.append(line)
     except KeyboardInterrupt:
-        env.stderr.write('\n')
+        env.stderr.write("\n")
         return ExitStatus.ERROR_CTRL_C
-    
+
     if not request_lines:
-        env.log_error('No request definitions found in STDIN.')
+        env.log_error("No request definitions found in STDIN.")
         return ExitStatus.ERROR
-    
+
     # Execute each request sequentially
     for i, request_line in enumerate(request_lines, 1):
         if env.stdout_isatty:
-            env.stderr.write(f'\n[{i}/{len(request_lines)}] {request_line}\n')
-        
+            env.stderr.write(f"\n[{i}/{len(request_lines)}] {request_line}\n")
+
         try:
             # Parse the request line as if it were CLI arguments
             # Add --ignore-stdin to prevent argparser from using stdin for request body
-            request_args = shlex.split(request_line) + ['--ignore-stdin']
-            
+            request_args = shlex.split(request_line) + ["--ignore-stdin"]
+
             # Create a fresh environment for this request to avoid stdin conflicts
             request_env = Environment(
                 stdin=None,  # No stdin for individual requests in sequence mode
@@ -216,28 +211,32 @@ def run_sequence_mode(args: argparse.Namespace, env: Environment) -> ExitStatus:
                 stderr=env.stderr,
             )
             request_env.program_name = env.program_name
-            
+
             # Parse the request
             request_namespace = parser.parse_args(
                 args=request_args,
                 env=request_env,
             )
-            
+
             # Execute the request (call _program to avoid sequence check loop)
             request_exit_status = _program(request_namespace, request_env)
-            
+
             # Track the worst exit status
             if request_exit_status != ExitStatus.SUCCESS:
                 exit_status = request_exit_status
-                
+
         except SystemExit as e:
             # Handle SystemExit from argument parser errors
             if e.code != ExitStatus.SUCCESS:
-                exit_status = ExitStatus.ERROR if e.code is None or e.code != 0 else ExitStatus(e.code)
+                exit_status = (
+                    ExitStatus.ERROR
+                    if e.code is None or e.code != 0
+                    else ExitStatus(e.code)
+                )
         except Exception as e:
-            env.log_error(f'Error executing request [{i}]: {e}')
+            env.log_error(f"Error executing request [{i}]: {e}")
             exit_status = ExitStatus.ERROR
-    
+
     return exit_status
 
 
@@ -247,9 +246,9 @@ def program(args: argparse.Namespace, env: Environment) -> ExitStatus:
 
     """
     # Handle --sequence mode: execute multiple requests from STDIN
-    if getattr(args, 'sequence', False):
+    if getattr(args, "sequence", False):
         return run_sequence_mode(args, env)
-    
+
     return _program(args, env)
 
 
@@ -265,7 +264,7 @@ def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
     processing_options = ProcessingOptions.from_raw_args(args)
 
     def separate():
-        getattr(env.stdout, 'buffer', env.stdout).write(MESSAGE_SEPARATOR_BYTES)
+        getattr(env.stdout, "buffer", env.stdout).write(MESSAGE_SEPARATOR_BYTES)
 
     def request_body_read_callback(chunk: bytes):
         should_pipe_to_stdout = bool(
@@ -281,16 +280,19 @@ def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
                 env,
                 chunk,
                 processing_options=processing_options,
-                headers=initial_request.headers
+                headers=initial_request.headers,
             )
 
     try:
         if args.download:
             args.follow = True  # --download implies --follow.
-            downloader = Downloader(env, output_file=args.output_file, resume=args.download_resume)
+            downloader = Downloader(
+                env, output_file=args.output_file, resume=args.download_resume
+            )
             downloader.pre_request(args.headers)
-        messages = collect_messages(env, args=args,
-                                    request_body_read_callback=request_body_read_callback)
+        messages = collect_messages(
+            env, args=args, request_body_read_callback=request_body_read_callback
+        )
         force_separator = False
         prev_with_body = False
 
@@ -299,7 +301,11 @@ def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
             output_options = OutputOptions.from_message(message, args.output_options)
 
             do_write_body = output_options.body
-            if prev_with_body and output_options.any() and (force_separator or not env.stdout_isatty):
+            if (
+                prev_with_body
+                and output_options.any()
+                and (force_separator or not env.stdout_isatty)
+            ):
                 # Separate after a previous message with body, if needed. See test_tokens.py.
                 separate()
             force_separator = False
@@ -313,16 +319,21 @@ def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
             else:
                 final_response = message
                 if args.check_status or downloader:
-                    exit_status = http_status_to_exit_status(http_status=message.status_code, follow=args.follow)
-                    if exit_status != ExitStatus.SUCCESS and (not env.stdout_isatty or args.quiet == 1):
-                        env.log_error(f'HTTP {message.raw.status} {message.raw.reason}', level=LogLevel.WARNING)
+                    exit_status = http_status_to_exit_status(
+                        http_status=message.status_code, follow=args.follow
+                    )
+                    if exit_status != ExitStatus.SUCCESS and (
+                        not env.stdout_isatty or args.quiet == 1
+                    ):
+                        env.log_error(
+                            f"HTTP {message.raw.status} {message.raw.reason}",
+                            level=LogLevel.WARNING,
+                        )
             write_message(
                 requests_message=message,
                 env=env,
-                output_options=output_options._replace(
-                    body=do_write_body
-                ),
-                processing_options=processing_options
+                output_options=output_options._replace(body=do_write_body),
+                processing_options=processing_options,
             )
             prev_with_body = output_options.body
 
@@ -340,8 +351,8 @@ def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
             if downloader.interrupted:
                 exit_status = ExitStatus.ERROR
                 env.log_error(
-                    f'Incomplete download: size={downloader.status.total_size};'
-                    f' downloaded={downloader.status.downloaded}'
+                    f"Incomplete download: size={downloader.status.total_size};"
+                    f" downloaded={downloader.status.downloaded}"
                 )
         return exit_status
 
@@ -353,31 +364,26 @@ def _program(args: argparse.Namespace, env: Environment) -> ExitStatus:
 
 
 def print_debug_info(env: Environment):
-    env.stderr.writelines([
-        f'HTTPie {httpie_version}\n',
-        f'Requests {requests_version}\n',
-        f'Pygments {pygments_version}\n',
-        f'Python {sys.version}\n{sys.executable}\n',
-        f'{platform.system()} {platform.release()}',
-    ])
-    env.stderr.write('\n\n')
+    env.stderr.writelines(
+        [
+            f"HTTPie {httpie_version}\n",
+            f"Requests {requests_version}\n",
+            f"Pygments {pygments_version}\n",
+            f"Python {sys.version}\n{sys.executable}\n",
+            f"{platform.system()} {platform.release()}",
+        ]
+    )
+    env.stderr.write("\n\n")
     env.stderr.write(repr(env))
-    env.stderr.write('\n\n')
+    env.stderr.write("\n\n")
     env.stderr.write(repr(plugin_manager))
-    env.stderr.write('\n')
+    env.stderr.write("\n")
 
 
-def decode_raw_args(
-    args: List[Union[str, bytes]],
-    stdin_encoding: str
-) -> List[str]:
+def decode_raw_args(args: List[Union[str, bytes]], stdin_encoding: str) -> List[str]:
     """
     Convert all bytes args to str
     by decoding them using stdin encoding.
 
     """
-    return [
-        arg.decode(stdin_encoding)
-        if type(arg) is bytes else arg
-        for arg in args
-    ]
+    return [arg.decode(stdin_encoding) if type(arg) is bytes else arg for arg in args]
